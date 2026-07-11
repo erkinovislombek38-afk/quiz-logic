@@ -1,0 +1,6 @@
+{
+  "name": "QuizLogic",
+  "description": "Premium multi-player adaptive quiz engine powered by Gemini AI with advanced pattern lock and 3D glassmorphism interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
