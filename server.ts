@@ -751,14 +751,21 @@ Boshqa hech qanday matn qo'shma.`;
 });
 
 // ─────────────────────────────────────────────
-// VITE / STATIC SERVING
+// STATIC FAYLLAR VA SERVERNI ISHGA TUSHIRISH
 // ─────────────────────────────────────────────
 
-// ─────────────────────────────────────────────
-// SERVER START (Render.com uchun)
-// ─────────────────────────────────────────────
+// Bu qism serverga frontend fayllarni qayerdan olishni o'rgatadi
+const distPath = path.resolve(__dirname); 
+app.use(express.static(distPath));
 
+app.get("*", (req, res) => {
+  res.sendFile(path.join(distPath, "index.html"));
+});
+
+// Serverni tinglash
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 QuizLogic Server ishga tushdi: port ${PORT}`);
   console.log(`📡 Socket.IO (Multiplayer) faol.`);
 });
+
+export default app;
