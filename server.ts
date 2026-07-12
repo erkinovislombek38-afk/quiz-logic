@@ -754,36 +754,11 @@ Boshqa hech qanday matn qo'shma.`;
 // VITE / STATIC SERVING
 // ─────────────────────────────────────────────
 
-// Netlify'da ishlatish uchun serverni `handler` sifatida eksport qilamiz
-const handler = serverless(app);
+// ─────────────────────────────────────────────
+// SERVER START (Render.com uchun)
+// ─────────────────────────────────────────────
 
-// Socket.IO'ni ham ishga tushirish uchun alohida funksiya
-const startSocketServer = () => {
-  io.on('connection', (socket) => {
-    console.log(`Socket connected: ${socket.id}`);
-  });
-};
-
-// Agar Netlify'da ishlayotgan bo'lsa, `handler`ni eksport qilamiz
-if (process.env.NETLIFY) {
-  // Netlify'da serverni ishga tushirish uchun
-  module.exports.handler = async (event, context) => {
-    // Socket.IO serverini bir marta ishga tushirish
-    if (!io.engine) {
-        console.log("Starting Socket.IO engine for Netlify...");
-        // @ts-ignore
-        httpServer.listen(context.port || 3001);
-    }
-    const result = await handler(event, context);
-    return result;
-  };
-} else {
-  // Lokal kompyuterda ishlatish uchun
-  httpServer.listen(PORT, () => {
-    console.log(`\n🚀 QuizLogic Server listening on http://localhost:${PORT}`);
-    console.log(`📡 Socket.IO is active.`);
-  });
-}
-
-app.use('/.netlify/functions/server', app);
-module.exports.handler = serverless(app);
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🚀 QuizLogic Server ishga tushdi: port ${PORT}`);
+  console.log(`📡 Socket.IO (Multiplayer) faol.`);
+});
