@@ -66,10 +66,10 @@ export default function MultiplayerLobby({
       ? window.location.origin
       : 'http://localhost:3001';
 
-    const s = io(socketUrl, {
+   const s = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
-      path: process.env.NODE_ENV === 'production' ? '/.netlify/functions/server/socket.io' : '/socket.io',
+      path: '/socket.io',
     });
 
     s.on('connect', () => {
