@@ -6,6 +6,7 @@ import { createServer as createHttpServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import dotenv from "dotenv";
 import pdf from 'pdf-parse';
+import serverless from 'serverless-http';
 import mammoth from 'mammoth';
 
 dotenv.config();
@@ -13,7 +14,6 @@ dotenv.config();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 const app = express();
-const httpServer = createHttpServer(app);
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 
 app.use(express.json({ limit: '10mb' }));
@@ -22,7 +22,11 @@ app.use(express.json({ limit: '10mb' }));
 // SOCKET.IO — Real-time Multiplayer Game Rooms
 // ─────────────────────────────────────────────
 
-const io = new SocketIOServer(httpServer, {
+// server.ts Netlify Functions'da ishga tushganda, yangi server yaratish o'rniga
+// mavjud HTTP serverni ishlatishimiz kerak.
+const httpServer = createHttpServer(app);
+
+const io = new SocketIOServer(httpServer, { // httpServer'ni bu yerda ishlatamiz
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
@@ -750,34 +754,36 @@ Boshqa hech qanday matn qo'shma.`;
 // VITE / STATIC SERVING
 // ─────────────────────────────────────────────
 
-async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
-    const vitePort = 5173; // Vite uchun alohida port
-    const vite = await createViteServer({
-      server: {
-        middlewareMode: true,
-        port: vitePort,
-        strictPort: true,
-        proxy: {
-          "/api": `http://localhost:${PORT}`,
-        },
-      },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
+// Netlify'da ishlatish uchun serverni `handler` sifatida eksport qilamiz
+const handler = serverless(app);
 
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`\n🚀 QuizLogic Server: http://0.0.0.0:${PORT}`);
-    console.log(`✨ Frontend & Backend shu manzilda: http://localhost:${PORT}`);
-    console.log(`📡 Socket.IO: Faol (real-time multiplayer)`);
+// Socket.IO'ni ham ishga tushirish uchun alohida funksiya
+const startSocketServer = () => {
+  io.on('connection', (socket) => {
+    console.log(`Socket connected: ${socket.id}`);
+  });
+};
+
+// Agar Netlify'da ishlayotgan bo'lsa, `handler`ni eksport qilamiz
+if (process.env.NETLIFY) {
+  // Netlify'da serverni ishga tushirish uchun
+  module.exports.handler = async (event, context) => {
+    // Socket.IO serverini bir marta ishga tushirish
+    if (!io.engine) {
+        console.log("Starting Socket.IO engine for Netlify...");
+        // @ts-ignore
+        httpServer.listen(context.port || 3001);
+    }
+    const result = await handler(event, context);
+    return result;
+  };
+} else {
+  // Lokal kompyuterda ishlatish uchun
+  httpServer.listen(PORT, () => {
+    console.log(`\n🚀 QuizLogic Server listening on http://localhost:${PORT}`);
+    console.log(`📡 Socket.IO is active.`);
   });
 }
 
-startServer();
+app.use('/.netlify/functions/server', app);
+module.exports.handler = serverless(app);

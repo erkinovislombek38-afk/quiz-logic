@@ -62,9 +62,14 @@ export default function MultiplayerLobby({
 
   // Connect socket
   useEffect(() => {
-    const s = io(window.location.origin, {
+    const socketUrl = process.env.NODE_ENV === 'production'
+      ? window.location.origin
+      : 'http://localhost:3001';
+
+    const s = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
+      path: process.env.NODE_ENV === 'production' ? '/.netlify/functions/server/socket.io' : '/socket.io',
     });
 
     s.on('connect', () => {

@@ -23,17 +23,19 @@ export default defineConfig(({ mode }) => {
       },
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
-      proxy: {
-        '/api': {
-          target: `http://localhost:${backendPort}`,
-          changeOrigin: true,
-        },
-        '/socket.io': {
-          target: `http://localhost:${backendPort}`,
-          changeOrigin: true,
-          ws: true,
-        },
-      },
+      proxy: mode === 'development'
+        ? {
+            '/api': {
+              target: `http://localhost:${backendPort}`,
+              changeOrigin: true,
+            },
+            '/socket.io': {
+              target: `http://localhost:${backendPort}`,
+              changeOrigin: true,
+              ws: true,
+            },
+          }
+        : {},
     },
   };
 });
