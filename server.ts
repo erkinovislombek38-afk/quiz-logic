@@ -755,7 +755,7 @@ Boshqa hech qanday matn qo'shma.`;
 // ─────────────────────────────────────────────
 
 // Bu qism serverga frontend fayllarni qayerdan olishni o'rgatadi
-const distPath = path.resolve(process.cwd());
+const distPath = path.join(process.cwd(), 'dist');
 app.use(express.static(distPath));
 
 app.get("*", (req, res) => {
