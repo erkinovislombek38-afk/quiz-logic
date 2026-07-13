@@ -286,8 +286,7 @@ export default function MultiplayerGame({
             
             // Calculate percentage
             const stats = room.currentAnswersStats || {};
-            const totalStats = Object.values(stats).reduce((a, b) => a + b, 0);
-            const pickCount = stats[option] || 0;
+            const totalStats = (Object.values(stats) as any[]).reduce((a, b) => (a as any) + (b as any), 0);            const pickCount = stats[option] || 0;
             const pct = totalStats > 0 ? Math.round((pickCount / totalStats) * 100) : 0;
 
             let btnClass = 'bg-slate-950/70 border-slate-800 text-slate-200 hover:border-slate-600 hover:bg-slate-950';

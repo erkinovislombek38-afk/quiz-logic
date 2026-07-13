@@ -68,7 +68,8 @@ export default function PatternLock({ onSuccess, onCancel }: PatternLockProps) {
     }
   };
 
-  const startTracking = (e: React.MouseEvent | React.TouchEvent) => {
+ const startTracking = (e: React.MouseEvent | React.TouchEvent) => {
+    if ('touches' in e) e.preventDefault(); 
     setErrorState(false);
     setIsDrawing(true);
     
@@ -247,8 +248,7 @@ export default function PatternLock({ onSuccess, onCancel }: PatternLockProps) {
           ref={containerRef}
           onMouseDown={startTracking}
           onTouchStart={startTracking}
-          className="relative w-full aspect-square bg-slate-950/60 rounded-2xl border border-slate-800/80 p-6 select-none cursor-pointer overflow-hidden shadow-[inset_0_4px_20px_rgba(0,0,0,0.8)]"
-        >
+className="relative w-full aspect-square touch-none bg-slate-950/60 rounded-2xl border border-slate-800/80 p-6 select-none cursor-pointer overflow-hidden shadow-[inset_0_4px_20px_rgba(0,0,0,0.8)]"        >
           {/* SVG Canvas for drawing connecting lines */}
           <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
             <defs>
