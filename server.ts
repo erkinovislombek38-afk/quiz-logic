@@ -1,12 +1,10 @@
 import express from "express";
 import path from "path";
 import multer from 'multer';
-import { createServer as createViteServer } from "vite";
 import { createServer as createHttpServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import dotenv from "dotenv";
-import pdf from 'pdf-parse';
-import serverless from 'serverless-http';
+import * as pdf from 'pdf-parse';
 import mammoth from 'mammoth';
 
 dotenv.config();
@@ -133,304 +131,335 @@ function getRoomWithQuiz(room: GameRoom) {
 io.on("connection", (socket) => {
   console.log(`[Socket] Connected: ${socket.id}`);
 
-  // ── CREATE ROOM ──
-  socket.on(
-    "createRoom",
-    (data: {
-      quizId: string;
-      quizTitle: string;
-      quizQuestionsCount: number;
-      quizQuestions: QuizQuestion[]; // ← Yangi: quiz savollari
-      playerName: string;
-      playerColor: string;
-      timerSeconds: number;
-    }) => {
-      const roomId = generateRoomId();
-      const playerId = `player-${socket.id}`;
+  // 1. Foydalanuvchini identifikatsiya qilish
+    socket.on("identify", (userData: { uid: string, name: string }) => {
+      socket.join(`user-${userData.uid}`); // Har bir foydalanuvchi uchun kanal
+      console.log(`[User] Identified: ${userData.name} (${userData.uid})`);
+    });
 
-      const room: GameRoom = {
-        id: roomId,
-        quizId: data.quizId,
-        quizTitle: data.quizTitle,
-        quizQuestionsCount: data.quizQuestionsCount,
-        quizQuestions: data.quizQuestions || [], // ← Savolllarni saqlash
-        hostId: playerId,
-        hostSocketId: socket.id,
-        status: "lobby",
-        currentQuestion: 0,
-        timerSeconds: Number(data.timerSeconds) || 30,
-        answers: {},
-        players: {
-          [socket.id]: {
-            id: playerId,
-            name: data.playerName || "Xost",
-            avatarColor: data.playerColor || "bg-cyan-500",
-            score: 0,
-            ready: true,
-            answers: {},
-          },
-        },
-      };
-
-      rooms.set(roomId, room);
-      socket.join(roomId);
-      // Xona yaratuvchiga quiz savollari bilan birga yuborish
-      socket.emit("roomCreated", { roomId, room: getRoomWithQuiz(room) });
-      console.log(`[Room] Created: ${roomId} by ${data.playerName} (${data.quizQuestions?.length || 0} savol)`);
-    }
-  );
-
-  // ── JOIN ROOM ──
-  socket.on(
-    "joinRoom",
-    (data: {
-      roomId: string;
-      playerName: string;
-      playerColor: string;
-    }) => {
-      const room = rooms.get(data.roomId.toUpperCase());
-      if (!room) {
-        socket.emit("error", { message: "Xona topilmadi. ID ni tekshiring." });
-        return;
-      }
-      if (room.status !== "lobby") {
-        socket.emit("error", { message: "O'yin allaqachon boshlangan. Kutib turing." });
-        return;
-      }
-      if (Object.keys(room.players).length >= 10) {
-        socket.emit("error", { message: "Xona to'ldi (maksimal 10 ta o'yinchi)." });
-        return;
-      }
-
-      const playerId = `player-${socket.id}`;
-      room.players[socket.id] = {
-        id: playerId,
-        name: data.playerName || "Mehmon",
-        avatarColor: data.playerColor || "bg-purple-500",
-        score: 0,
-        ready: false,
-        answers: {},
-      };
-
-      socket.join(data.roomId.toUpperCase());
-      // Yangi o'yinchiga quiz savollari bilan birga yuborish
-      socket.emit("roomJoined", { roomId: room.id, room: getRoomWithQuiz(room) });
-      io.to(room.id).emit("playerJoined", {
-        player: room.players[socket.id],
-        room: getRoomSummary(room),
+    // 2. Obuna bo'lganda real-time xabar yuborish
+    socket.on("followUser", (data: { follower: any, targetUid: string }) => {
+      io.to(`user-${data.targetUid}`).emit("newNotification", {
+        id: `follow-${Date.now()}`,
+        title: "Yangi Obunachi! 👤",
+        sender: data.follower.name,
+        text: `${data.follower.name} sizga obuna bo'ldi.`,
+        type: 'system',
+        time: "Hozirgina",
+        data: { followerUid: data.follower.uid }
       });
-      console.log(`[Room] ${data.playerName} joined: ${room.id}`);
-    }
-  );
+    });
 
-  // ── PLAYER READY ──
-  socket.on("playerReady", (data: { roomId: string }) => {
-    const room = rooms.get(data.roomId);
-    if (!room || !room.players[socket.id]) return;
-    room.players[socket.id].ready = true;
-    io.to(room.id).emit("roomUpdated", { room: getRoomSummary(room) });
-  });
+    // 3. Test ulashilganda hamma onlayn foydalanuvchilarga xabar berish
+    socket.on("shareQuiz", (data: { senderName: string, quizTitle: string }) => {
+      socket.broadcast.emit("newNotification", {
+        id: `share-${Date.now()}`,
+        title: "Yangi Test Ulashildi 🚀",
+        sender: data.senderName,
+        text: `${data.senderName} yangi "${data.quizTitle}" testini guruhga tashladi!`,
+        type: 'system',
+        time: "Hozirgina"
+      });
+    });
 
-  // ── START GAME (host only) ──
-  socket.on("startGame", (data: { roomId: string }) => {
-    const room = rooms.get(data.roomId);
-    if (!room) return;
-    if (room.hostSocketId !== socket.id) {
-      socket.emit("error", { message: "Faqat xona egasi o'yinni boshlashi mumkin." });
-      return;
-    }
-    if (Object.keys(room.players).length < 1) return;
+    // ── CREATE ROOM ──
+    socket.on(
+      "createRoom",
+      (data: {
+        quizId: string;
+        quizTitle: string;
+        quizQuestionsCount: number;
+        quizQuestions: QuizQuestion[]; // ← Yangi: quiz savollari
+        playerName: string;
+        playerColor: string;
+        timerSeconds: number;
+      }) => {
+        const roomId = generateRoomId();
+        const playerId = `player-${socket.id}`;
 
-    room.status = "playing";
-    room.currentQuestion = 0;
-    room.startedAt = Date.now();
+        const room: GameRoom = {
+          id: roomId,
+          quizId: data.quizId,
+          quizTitle: data.quizTitle,
+          quizQuestionsCount: data.quizQuestionsCount,
+          quizQuestions: data.quizQuestions || [], // ← Savolllarni saqlash
+          hostId: playerId,
+          hostSocketId: socket.id,
+          status: "lobby",
+          currentQuestion: 0,
+          timerSeconds: Number(data.timerSeconds) || 30,
+          answers: {},
+          players: {
+            [socket.id]: {
+              id: playerId,
+              name: data.playerName || "Xost",
+              avatarColor: data.playerColor || "bg-cyan-500",
+              score: 0,
+              ready: true,
+              answers: {},
+            },
+          },
+        };
 
-    // Avtomatik keyingi savolga o'tish funksiyasi
-    const advanceQuestion = () => {
-      if (room.questionTimer) clearTimeout(room.questionTimer);
-      if (room.status !== 'playing') return;
+        rooms.set(roomId, room);
+        socket.join(roomId);
+        // Xona yaratuvchiga quiz savollari bilan birga yuborish
+        socket.emit("roomCreated", { roomId, room: getRoomWithQuiz(room) });
+        console.log(`[Room] Created: ${roomId} by ${data.playerName} (${data.quizQuestions?.length || 0} savol)`);
+      }
+    );
 
-      room.currentQuestion++;
+    // ── JOIN ROOM ──
+    socket.on(
+      "joinRoom",
+      (data: {
+        roomId: string;
+        playerName: string;
+        playerColor: string;
+      }) => {
+        const room = rooms.get(data.roomId.toUpperCase());
+        if (!room) {
+          socket.emit("error", { message: "Xona topilmadi. ID ni tekshiring." });
+          return;
+        }
+        if (room.status !== "lobby") {
+          socket.emit("error", { message: "O'yin allaqachon boshlangan. Kutib turing." });
+          return;
+        }
+        if (Object.keys(room.players).length >= 10) {
+          socket.emit("error", { message: "Xona to'ldi (maksimal 10 ta o'yinchi)." });
+          return;
+        }
 
-      if (room.currentQuestion >= room.quizQuestionsCount) {
-        // O'YIN TUGADI - OVOZ BERISHNI BOSHLASH
-        room.status = "finished";
-        room.rematchVotes = {}; // Ovoz berishni tozalash
-        io.to(room.id).emit("gameFinished", { room: getRoomSummary(room) });
-        console.log(`[Room] Game finished automatically: ${room.id}`);
+        const playerId = `player-${socket.id}`;
+        room.players[socket.id] = {
+          id: playerId,
+          name: data.playerName || "Mehmon",
+          avatarColor: data.playerColor || "bg-purple-500",
+          score: 0,
+          ready: false,
+          answers: {},
+        };
 
-        // Ovoz berish uchun 30 soniya taymer
-        room.questionTimer = setTimeout(() => {
-          const currentRoom = rooms.get(room.id);
-          if (!currentRoom || currentRoom.status !== 'finished') return;
-
-          const votes = Object.values(currentRoom.rematchVotes || {});
-          const rematchCount = votes.filter(v => v === 'rematch').length;
-          const finishCount = votes.filter(v => v === 'finish').length;
-
-          if (rematchCount > finishCount) {
-            // Qayta o'ynash
-            currentRoom.status = 'playing';
-            currentRoom.currentQuestion = 0;
-            currentRoom.answers = {};
-            currentRoom.rematchVotes = {};
-            Object.values(currentRoom.players).forEach(p => {
-              p.score = 0;
-              p.answers = {};
-              p.finishedAt = undefined;
-            });
-            io.to(room.id).emit("gameRestarted", { room: getRoomWithQuiz(currentRoom) });
-            console.log(`[Room] Rematch started: ${room.id}`);
-            advanceQuestion(); // Start the question timer again
-          } else {
-            // Yakunlash
-            io.to(room.id).emit("lobbyClosed");
-            rooms.delete(room.id);
-            console.log(`[Room] Lobby closed after voting: ${room.id}`);
-          }
-        }, 30000);
-      } else {
-        io.to(room.id).emit("questionChanged", {
-          questionIndex: room.currentQuestion,
+        socket.join(data.roomId.toUpperCase());
+        // Yangi o'yinchiga quiz savollari bilan birga yuborish
+        socket.emit("roomJoined", { roomId: room.id, room: getRoomWithQuiz(room) });
+        io.to(room.id).emit("playerJoined", {
+          player: room.players[socket.id],
           room: getRoomSummary(room),
         });
-        // Keyingi savol uchun yangi taymerni o'rnatish
-        room.questionTimer = setTimeout(advanceQuestion, (room.timerSeconds + 2) * 1000); // +2s bufer
+        console.log(`[Room] ${data.playerName} joined: ${room.id}`);
       }
-    };
-    room.questionTimer = setTimeout(advanceQuestion, (room.timerSeconds + 2) * 1000);
+    );
 
-    // gameStarted eventida quiz savollari ham yuboriladi — URL orqali kelgan o'yinchilar uchun
-    io.to(room.id).emit("gameStarted", {
-      room: getRoomWithQuiz(room),
-      questionIndex: 0,
-    });
-    console.log(`[Room] Game started: ${room.id}`);
-  });
-
-  // ── SUBMIT ANSWER ──
-  socket.on(
-    "submitAnswer",
-    (data: { roomId: string; questionIndex: number; answer: string }) => {
+    // ── PLAYER READY ──
+    socket.on("playerReady", (data: { roomId: string }) => {
       const room = rooms.get(data.roomId);
       if (!room || !room.players[socket.id]) return;
-      if (room.status !== "playing") return;
+      room.players[socket.id].ready = true;
+      io.to(room.id).emit("roomUpdated", { room: getRoomSummary(room) });
+    });
 
-      const player = room.players[socket.id];
-
-      // Don't allow re-submission
-      if (player.answers[data.questionIndex] !== undefined) return;
-
-      player.answers[data.questionIndex] = data.answer;
-
-      if (!room.answers[data.questionIndex]) {
-        room.answers[data.questionIndex] = {};
+    // ── START GAME (host only) ──
+    socket.on("startGame", (data: { roomId: string }) => {
+      const room = rooms.get(data.roomId);
+      if (!room) return;
+      if (room.hostSocketId !== socket.id) {
+        socket.emit("error", { message: "Faqat xona egasi o'yinni boshlashi mumkin." });
+        return;
       }
-      room.answers[data.questionIndex][player.id] = data.answer;
+      if (Object.keys(room.players).length < 1) return;
 
-      // Notify all players that someone answered
-      io.to(room.id).emit("playerAnswered", {
-        playerId: player.id,
-        playerName: player.name,
-        questionIndex: data.questionIndex,
-        totalAnswered: Object.keys(room.answers[data.questionIndex] || {}).length,
-        totalPlayers: Object.keys(room.players).length,
+      room.status = "playing";
+      room.currentQuestion = 0;
+      room.startedAt = Date.now();
+
+      // Avtomatik keyingi savolga o'tish funksiyasi
+      const advanceQuestion = () => {
+        if (room.questionTimer) clearTimeout(room.questionTimer);
+        if (room.status !== 'playing') return;
+
+        room.currentQuestion++;
+
+        if (room.currentQuestion >= room.quizQuestionsCount) {
+          // O'YIN TUGADI - OVOZ BERISHNI BOSHLASH
+          room.status = "finished";
+          room.rematchVotes = {}; // Ovoz berishni tozalash
+          io.to(room.id).emit("gameFinished", { room: getRoomSummary(room) });
+          console.log(`[Room] Game finished automatically: ${room.id}`);
+
+          // Ovoz berish uchun 30 soniya taymer
+          room.questionTimer = setTimeout(() => {
+            const currentRoom = rooms.get(room.id);
+            if (!currentRoom || currentRoom.status !== 'finished') return;
+
+            const votes = Object.values(currentRoom.rematchVotes || {});
+            const rematchCount = votes.filter(v => v === 'rematch').length;
+            const finishCount = votes.filter(v => v === 'finish').length;
+
+            if (rematchCount > finishCount) {
+              // Qayta o'ynash
+              currentRoom.status = 'playing';
+              currentRoom.currentQuestion = 0;
+              currentRoom.answers = {};
+              currentRoom.rematchVotes = {};
+              Object.values(currentRoom.players).forEach(p => {
+                p.score = 0;
+                p.answers = {};
+                p.finishedAt = undefined;
+              });
+              io.to(room.id).emit("gameRestarted", { room: getRoomWithQuiz(currentRoom) });
+              console.log(`[Room] Rematch started: ${room.id}`);
+              advanceQuestion(); // Start the question timer again
+            } else {
+              // Yakunlash
+              io.to(room.id).emit("lobbyClosed");
+              rooms.delete(room.id);
+              console.log(`[Room] Lobby closed after voting: ${room.id}`);
+            }
+          }, 30000);
+        } else {
+          io.to(room.id).emit("questionChanged", {
+            questionIndex: room.currentQuestion,
+            room: getRoomSummary(room),
+          });
+          // Keyingi savol uchun yangi taymerni o'rnatish
+          room.questionTimer = setTimeout(advanceQuestion, (room.timerSeconds + 2) * 1000); // +2s bufer
+        }
+      };
+      room.questionTimer = setTimeout(advanceQuestion, (room.timerSeconds + 2) * 1000);
+
+      // gameStarted eventida quiz savollari ham yuboriladi — URL orqali kelgan o'yinchilar uchun
+      io.to(room.id).emit("gameStarted", {
+        room: getRoomWithQuiz(room),
+        questionIndex: 0,
       });
-    }
-  );
+      console.log(`[Room] Game started: ${room.id}`);
+    });
 
-  // ── SCORE UPDATE (after client computes correctness) ──
-  socket.on(
-    "updateScore",
-    (data: { roomId: string; score: number }) => {
+    // ── SUBMIT ANSWER ──
+    socket.on(
+      "submitAnswer",
+      (data: { roomId: string; questionIndex: number; answer: string }) => {
+        const room = rooms.get(data.roomId);
+        if (!room || !room.players[socket.id]) return;
+        if (room.status !== "playing") return;
+
+        const player = room.players[socket.id];
+
+        // Don't allow re-submission
+        if (player.answers[data.questionIndex] !== undefined) return;
+
+        player.answers[data.questionIndex] = data.answer;
+
+        if (!room.answers[data.questionIndex]) {
+          room.answers[data.questionIndex] = {};
+        }
+        room.answers[data.questionIndex][player.id] = data.answer;
+
+        // Notify all players that someone answered
+        io.to(room.id).emit("playerAnswered", {
+          playerId: player.id,
+          playerName: player.name,
+          questionIndex: data.questionIndex,
+          totalAnswered: Object.keys(room.answers[data.questionIndex] || {}).length,
+          totalPlayers: Object.keys(room.players).length,
+        });
+      }
+    );
+
+    // ── SCORE UPDATE (after client computes correctness) ──
+    socket.on(
+      "updateScore",
+      (data: { roomId: string; score: number }) => {
+        const room = rooms.get(data.roomId);
+        if (!room || !room.players[socket.id]) return;
+        room.players[socket.id].score = data.score;
+        io.to(room.id).emit("scoresUpdated", { room: getRoomSummary(room) });
+      }
+    );
+
+    // ── CHANGE TIME DYNAMICALLY ──
+    socket.on("changeTime", (data: { roomId: string; delta: number }) => {
+      const room = rooms.get(data.roomId);
+      if (!room) return;
+      if (room.hostSocketId !== socket.id) return;
+      io.to(room.id).emit("timeChanged", { delta: data.delta });
+    });
+
+    // ── NEXT QUESTION (host advances) ──
+    socket.on("nextQuestion", (data: { roomId: string }) => {
+      // Bu endi ishlatilmaydi, chunki server avtomatik o'tkazadi.
+      // Lekin xavfsizlik uchun qoldiramiz, agar eski klientlar bo'lsa.
+      const room = rooms.get(data.roomId);
+      if (!room || room.hostSocketId !== socket.id) return;
+      console.log(`[Room] Host tried to manually advance question in ${data.roomId}. This is now automatic.`);
+    });
+
+    // ── FINISH (player done — for last question) ──
+    socket.on("playerFinished", (data: { roomId: string; score: number }) => {
       const room = rooms.get(data.roomId);
       if (!room || !room.players[socket.id]) return;
       room.players[socket.id].score = data.score;
+      room.players[socket.id].finishedAt = Date.now();
       io.to(room.id).emit("scoresUpdated", { room: getRoomSummary(room) });
-    }
-  );
-
-  // ── CHANGE TIME DYNAMICALLY ──
-  socket.on("changeTime", (data: { roomId: string; delta: number }) => {
-    const room = rooms.get(data.roomId);
-    if (!room) return;
-    if (room.hostSocketId !== socket.id) return;
-    io.to(room.id).emit("timeChanged", { delta: data.delta });
-  });
-
-  // ── NEXT QUESTION (host advances) ──
-  socket.on("nextQuestion", (data: { roomId: string }) => {
-    // Bu endi ishlatilmaydi, chunki server avtomatik o'tkazadi.
-    // Lekin xavfsizlik uchun qoldiramiz, agar eski klientlar bo'lsa.
-    const room = rooms.get(data.roomId);
-    if (!room || room.hostSocketId !== socket.id) return;
-    console.log(`[Room] Host tried to manually advance question in ${data.roomId}. This is now automatic.`);
-  });
-
-  // ── FINISH (player done — for last question) ──
-  socket.on("playerFinished", (data: { roomId: string; score: number }) => {
-    const room = rooms.get(data.roomId);
-    if (!room || !room.players[socket.id]) return;
-    room.players[socket.id].score = data.score;
-    room.players[socket.id].finishedAt = Date.now();
-    io.to(room.id).emit("scoresUpdated", { room: getRoomSummary(room) });
-  });
-
-  // ── VOTE FOR REMATCH ──
-  socket.on("voteForRematch", (data: { roomId: string; vote: 'rematch' | 'finish' }) => {
-    const room = rooms.get(data.roomId);
-    if (!room || room.status !== 'finished' || !room.players[socket.id]) return;
-
-    const player = room.players[socket.id];
-    if (!room.rematchVotes) room.rematchVotes = {};
-
-    // Faqat bitta ovoz berishga ruxsat
-    if (room.rematchVotes[player.id]) return;
-    room.rematchVotes[player.id] = data.vote;
-    io.to(room.id).emit("roomUpdated", { room: getRoomSummary(room) });
-  });
-
-  // ── CHAT MESSAGE ──
-  socket.on("chatMessage", (data: { roomId: string; text: string }) => {
-    const room = rooms.get(data.roomId);
-    if (!room || !room.players[socket.id]) return;
-    const player = room.players[socket.id];
-    io.to(room.id).emit("chatMessage", {
-      senderId: player.id,
-      senderName: player.name,
-      text: data.text.substring(0, 200),
-      time: new Date().toLocaleTimeString("uz"),
     });
-  });
 
-  // ── DISCONNECT ──
-  socket.on("disconnect", () => {
-    console.log(`[Socket] Disconnected: ${socket.id}`);
-    for (const [roomId, room] of rooms.entries()) {
-      if (room.players[socket.id]) {
-        const playerName = room.players[socket.id].name;
-        delete room.players[socket.id];
+    // ── VOTE FOR REMATCH ──
+    socket.on("voteForRematch", (data: { roomId: string; vote: 'rematch' | 'finish' }) => {
+      const room = rooms.get(data.roomId);
+      if (!room || room.status !== 'finished' || !room.players[socket.id]) return;
 
-        if (Object.keys(room.players).length === 0) {
-          if (room.questionTimer) clearTimeout(room.questionTimer); // Taymerni faqat xona bo'shaganda tozalash
-          rooms.delete(roomId);
-          console.log(`[Room] Deleted empty room: ${roomId}`);
-        } else {
-          // If host left, assign new host
-          if (room.hostSocketId === socket.id) {
-            const newHostSocketId = Object.keys(room.players)[0];
-            room.hostSocketId = newHostSocketId;
-            room.hostId = room.players[newHostSocketId].id;
+      const player = room.players[socket.id];
+      if (!room.rematchVotes) room.rematchVotes = {};
+
+      // Faqat bitta ovoz berishga ruxsat
+      if (room.rematchVotes[player.id]) return;
+      room.rematchVotes[player.id] = data.vote;
+      io.to(room.id).emit("roomUpdated", { room: getRoomSummary(room) });
+    });
+
+    // ── CHAT MESSAGE ──
+    socket.on("chatMessage", (data: { roomId: string; text: string }) => {
+      const room = rooms.get(data.roomId);
+      if (!room || !room.players[socket.id]) return;
+      const player = room.players[socket.id];
+      io.to(room.id).emit("chatMessage", {
+        senderId: player.id,
+        senderName: player.name,
+        text: data.text.substring(0, 200),
+        time: new Date().toLocaleTimeString("uz"),
+      });
+    });
+
+    // ── DISCONNECT ──
+    socket.on("disconnect", () => {
+      console.log(`[Socket] Disconnected: ${socket.id}`);
+      for (const [roomId, room] of rooms.entries()) {
+        if (room.players[socket.id]) {
+          const playerName = room.players[socket.id].name;
+          delete room.players[socket.id];
+
+          if (Object.keys(room.players).length === 0) {
+            if (room.questionTimer) clearTimeout(room.questionTimer); // Taymerni faqat xona bo'shaganda tozalash
+            rooms.delete(roomId);
+            console.log(`[Room] Deleted empty room: ${roomId}`);
+          } else {
+            // If host left, assign new host
+            if (room.hostSocketId === socket.id) {
+              const newHostSocketId = Object.keys(room.players)[0];
+              room.hostSocketId = newHostSocketId;
+              room.hostId = room.players[newHostSocketId].id;
+            }
+            io.to(roomId).emit("playerLeft", {
+              playerName,
+              room: getRoomSummary(room),
+            });
           }
-          io.to(roomId).emit("playerLeft", {
-            playerName,
-            room: getRoomSummary(room),
-          });
+          break;
         }
-        break;
       }
-    }
-  });
+    });
 });
 
 // ─────────────────────────────────────────────
@@ -530,8 +559,8 @@ function sanitizeText(text: string): string {
   cleanedText = cleanedText.replace(/[\u201C\u201D]/g, '"'); // Replace curly quotes
   cleanedText = cleanedText.replace(/[\u2018\u2019]/g, "'"); // Replace curly single quotes
 
-  return cleanedText;
-}; // This was a semicolon, it should be a brace for the function
+  return cleanedText; // This was a semicolon, it should be a brace for the function
+}
 
 app.post("/api/parse-docx", upload.single('file'), async (req, res) => {
   if (!req.file) {
@@ -755,7 +784,7 @@ Boshqa hech qanday matn qo'shma.`;
 // ─────────────────────────────────────────────
 
 // Bu qism serverga frontend fayllarni qayerdan olishni o'rgatadi
-const distPath = path.join(process.cwd(), 'dist');
+const distPath = path.join(process.cwd(), "dist");
 app.use(express.static(distPath));
 
 app.get("*", (req, res) => {
@@ -766,5 +795,4 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 QuizLogic Server ishga tushdi: port ${PORT}`);
   console.log(`📡 Socket.IO (Multiplayer) faol.`);
 });
-
 export default app;
