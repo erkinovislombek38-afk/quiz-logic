@@ -38,9 +38,57 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('quiz_logic_user', JSON.stringify(user));
   }, [user]);
-  // Foydalanuvchini server ro'yxatiga (Search uchun) qo'shish
+  const [quizzes, setQuizzes] = useState<Quiz[]>(INITIAL_QUIZZES);
+
+  // ── URL Parametrlarini o'qish (multiplayer room join) ──
+  const [urlRoomId, setUrlRoomId] = useState<string | null>(null);
+  const [urlQuizId, setUrlQuizId] = useState<string | null>(null);
+
   useEffect(() => {
-    // Serverdan real-time xabarlarni kutib olish
+    const registerUserOnServer = async () => {
+      try {
+        await fetch('/api/users/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(user) });
+      } catch (e) { console.error("Serverga ulanishda xato:", e); }
+    };
+    registerUserOnServer();
+    const params = new URLSearchParams(window.location.search);
+    const roomId = params.get('room');
+    const quizId = params.get('quiz');
+    if (roomId) {
+      setUrlRoomId(roomId.toUpperCase());
+      setCurrentScreen('multiplayer-lobby');
+    }
+    if (quizId) {
+      setUrlQuizId(quizId);
+    }
+  }, [user]); // user o'zgarganda qayta registratsiya qilish uchun
+
+  // ── Multiplayer state ──
+  const [mpSocket, setMpSocket] = useState<Socket | null>(null);
+  const [mpRoom, setMpRoom] = useState<GameRoomSummary | null>(null);
+  const [mpQuiz, setMpQuiz] = useState<Quiz | null>(null);
+  const [mpMyPlayerId, setMpMyPlayerId] = useState<string>('');
+  const [mpFinalRoom, setMpFinalRoom] = useState<GameRoomSummary | null>(null);
+  const [myRematchVote, setMyRematchVote] = useState<'rematch' | 'finish' | null>(null);
+  const [mpLobbyQuizId, setMpLobbyQuizId] = useState<string | null>(null);
+
+  // Notifications state
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]); 
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Followed virtual members state
+  const [followedMembers, setFollowedMembers] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('followed_members');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return ["Prof. Axmedov"];
+  });
+
+  // Serverdan real-time xabarlarni kutib olish
   useEffect(() => {
     if (mpSocket) {
       // 1. Serverga o'zimizni tanitish
@@ -54,58 +102,6 @@ export default function App() {
     }
     return () => { mpSocket?.off("newNotification"); };
   }, [mpSocket, user.uid, user.name]);
-    const registerUserOnServer = async () => {
-      try {
-        await fetch('/api/users/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(user),
-        });
-      } catch (e) {
-        console.error("Serverga ulanishda xato:", e);
-      }
-    };
-    registerUserOnServer();
-  }, [user]);
-  const [quizzes, setQuizzes] = useState<Quiz[]>(INITIAL_QUIZZES);
-
-  // ── URL Parametrlarini o'qish (multiplayer room join) ──
-  const [urlRoomId, setUrlRoomId] = useState<string | null>(null);
-  const [urlQuizId, setUrlQuizId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const roomId = params.get('room');
-    const quizId = params.get('quiz');
-    if (roomId) {
-      setUrlRoomId(roomId.toUpperCase());
-      setCurrentScreen('multiplayer-lobby');
-    }
-    if (quizId) {
-      setUrlQuizId(quizId);
-    }
-  }, []);
-
-  // ── Multiplayer state ──
-  const [mpSocket, setMpSocket] = useState<Socket | null>(null);
-  const [mpRoom, setMpRoom] = useState<GameRoomSummary | null>(null);
-  const [mpQuiz, setMpQuiz] = useState<Quiz | null>(null);
-  const [mpMyPlayerId, setMpMyPlayerId] = useState<string>('');
-  const [mpFinalRoom, setMpFinalRoom] = useState<GameRoomSummary | null>(null);
-  const [myRematchVote, setMyRematchVote] = useState<'rematch' | 'finish' | null>(null);
-  const [mpLobbyQuizId, setMpLobbyQuizId] = useState<string | null>(null);
-
-  // Followed virtual members state
-  const [followedMembers, setFollowedMembers] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('followed_members');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {}
-    return ["Prof. Axmedov"];
-  });
 
   const handleFollowMember = (memberName: string) => {
     setFollowedMembers(prev => {
@@ -185,9 +181,7 @@ export default function App() {
   const [chunkingMode, setChunkingMode] = useState<'module' | 'all-at-once'>('module');
   const [sharingInitialTab, setSharingInitialTab] = useState<'my-quizzes' | 'shared-feed' | 'members'>('shared-feed');
   const [globalGeneratingName, setGlobalGeneratingName] = useState<string | null>(null);
-  const [isPatternUnlocked, setIsPatternUnlocked] = useState(false);
-const [notifications, setNotifications] = useState<NotificationItem[]>([]); 
-const [unreadCount, setUnreadCount] = useState(0);
+  const [isPatternUnlocked, setIsPatternUnlocked] = useState(false); 
   const handleShareQuiz = (quizId: string) => {
     setQuizzes(prev => prev.map(q => {
       if (q.id === quizId) return { ...q, isShared: true, sharedBy: user.name };

@@ -30,14 +30,13 @@ export default function GroupSharingPanel({
   onStartMultiplayer
 }: GroupSharingPanelProps) {
   const [activeTab, setActiveTab] = useState<'my-quizzes' | 'shared-feed' | 'members'>(initialTab || 'shared-feed');
-  const [searchQuery, setSearchQuery] = useState(''); // This is correct
-  const [searchResults, setSearchResults] = useState<any[]>(ALL_VIRTUAL_MEMBERS);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (!searchQuery.trim()) {
-      setSearchResults(ALL_VIRTUAL_MEMBERS);
       setSearchResults([]);
       return;
     }
