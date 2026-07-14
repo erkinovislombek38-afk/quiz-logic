@@ -18,15 +18,41 @@ import { Award, Trophy, Zap, Sparkles, BookOpen, ChevronRight, RefreshCw, AlertT
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [user, setUser] = useState<User>({
-    uid: "QL-908214",
-    name: "Islombek Erkinov",
-    email: "erkinovislombek4@gmail.com",
-    xp: 1450,
-    level: 2,
-    rank: "Faol Abituriyent"
+ const [user, setUser] = useState<User>(() => {
+    const savedUser = localStorage.getItem('quiz_logic_user');
+    if (savedUser) return JSON.parse(savedUser);
+
+    // Agar yangi foydalanuvchi bo'lsa, unga avtomatik yangi ID beramiz
+    const randomID = Math.floor(100000 + Math.random() * 900000);
+    return {
+      uid: `QL-${randomID}`,
+      name: "Mehmon Foydalanuvchi", // Default ism
+      email: "email@kiritilmagan.com",
+      xp: 0,
+      level: 1,
+      rank: "Yangi Abituriyent"
+    };
   });
 
+  // Profil o'zgarganda har doim xotiraga saqlash
+  useEffect(() => {
+    localStorage.setItem('quiz_logic_user', JSON.stringify(user));
+  }, [user]);
+  // Foydalanuvchini server ro'yxatiga (Search uchun) qo'shish
+  useEffect(() => {
+    const registerUserOnServer = async () => {
+      try {
+        await fetch('/api/users/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(user),
+        });
+      } catch (e) {
+        console.error("Serverga ulanishda xato:", e);
+      }
+    };
+    registerUserOnServer();
+  }, [user]);
   const [quizzes, setQuizzes] = useState<Quiz[]>(INITIAL_QUIZZES);
 
   // ── URL Parametrlarini o'qish (multiplayer room join) ──

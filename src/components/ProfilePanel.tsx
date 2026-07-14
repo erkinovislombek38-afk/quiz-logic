@@ -42,6 +42,9 @@ function ProfilePanelContent({ user, onUpdateName, onGoogleLoginSuccess }: Profi
       setGoogleUser(profile);
       localStorage.setItem('google_user_profile', JSON.stringify(profile));
       onGoogleLoginSuccess(profile); // Pass profile up to App.tsx
+      // Xotiraga ism va emailni yozib qo'yamiz
+      const updatedUser = { ...user, name: profile.name, email: profile.email };
+      localStorage.setItem('quiz_logic_user', JSON.stringify(updatedUser));
       showStatus('success', `${profile.name} hisobi orqali tizimga kirildi!`);
     },
     onError: () => {
@@ -56,18 +59,22 @@ function ProfilePanelContent({ user, onUpdateName, onGoogleLoginSuccess }: Profi
     showStatus('success', "Google hisobidan chiqildi.");
   };
 
-  const handleSaveName = (e: React.FormEvent) => {
+ const handleSaveName = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editableName.trim() || editableName.trim() === user.name) return;
+    const trimmedName = editableName.trim();
+    if (!trimmedName || trimmedName === user.name) return;
 
     setIsSaving(true);
     setTimeout(() => {
-      onUpdateName(editableName.trim());
+      onUpdateName(trimmedName);
+      // Yangi ismni xotiraga yozamiz
+      const updatedUser = { ...user, name: trimmedName };
+      localStorage.setItem('quiz_logic_user', JSON.stringify(updatedUser));
+      
       setIsSaving(false);
       showStatus('success', "Ismingiz muvaffaqiyatli yangilandi!");
     }, 800);
   };
-
   return (
     <div className="flex flex-col gap-6 w-full max-w-md mx-auto px-1 animate-fade-in">
       {/* Visual profile summary banner */}
@@ -133,12 +140,13 @@ function ProfilePanelContent({ user, onUpdateName, onGoogleLoginSuccess }: Profi
           Bu ism o'yinlarda va reyting jadvallarida ko'rinadi. Google hisobingizdan farqli nom tanlashingiz mumkin.
         </p>
         <div className="flex items-center gap-2">
-          <input
+         <input
             type="text"
-            value={editableName}
+            // Agar ism kiritilmagan bo'lsa, ichini bo'sh ko'rsatadi (placeholder chiqishi uchun)
+            value={editableName === "Mehmon Foydalanuvchi" ? "" : editableName}
             onChange={(e) => setEditableName(e.target.value)}
             className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-cyan-500/50 transition-colors"
-            placeholder="Yangi ismingizni kiriting..."
+            placeholder="O'z nikingizni kiriting..."
           />
           <button type="submit" disabled={isSaving || editableName.trim() === user.name} className="px-4 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black rounded-xl transition-all flex items-center justify-center gap-1.5 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed">
             {isSaving ? (
