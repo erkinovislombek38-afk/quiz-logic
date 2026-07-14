@@ -217,6 +217,7 @@ function ProfilePanelContent({ user, onUpdateName, onGoogleLoginSuccess }: Profi
 }
 
 export default function ProfilePanel(props: ProfilePanelProps) {
+  // @ts-ignore
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   if (!clientId) {

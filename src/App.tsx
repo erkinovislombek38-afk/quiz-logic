@@ -40,6 +40,20 @@ export default function App() {
   }, [user]);
   // Foydalanuvchini server ro'yxatiga (Search uchun) qo'shish
   useEffect(() => {
+    // Serverdan real-time xabarlarni kutib olish
+  useEffect(() => {
+    if (mpSocket) {
+      // 1. Serverga o'zimizni tanitish
+      mpSocket.emit("identify", { uid: user.uid, name: user.name });
+
+      // 2. Yangi xabar kelganda qabul qilish
+      mpSocket.on("newNotification", (newNotify: NotificationItem) => {
+        setNotifications(prev => [newNotify, ...prev]);
+        setUnreadCount(prev => prev + 1); // Qong'iroqchaga +1 qo'shish
+      });
+    }
+    return () => { mpSocket?.off("newNotification"); };
+  }, [mpSocket, user.uid, user.name]);
     const registerUserOnServer = async () => {
       try {
         await fetch('/api/users/register', {
@@ -172,8 +186,8 @@ export default function App() {
   const [sharingInitialTab, setSharingInitialTab] = useState<'my-quizzes' | 'shared-feed' | 'members'>('shared-feed');
   const [globalGeneratingName, setGlobalGeneratingName] = useState<string | null>(null);
   const [isPatternUnlocked, setIsPatternUnlocked] = useState(false);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
-
+const [notifications, setNotifications] = useState<NotificationItem[]>([]); 
+const [unreadCount, setUnreadCount] = useState(0);
   const handleShareQuiz = (quizId: string) => {
     setQuizzes(prev => prev.map(q => {
       if (q.id === quizId) return { ...q, isShared: true, sharedBy: user.name };
@@ -583,6 +597,8 @@ export default function App() {
             onFollowMember={handleFollowMember}
             onUnfollowMember={handleUnfollowMember}
             onStartQuiz={handleStartQuiz}
+            onStartMultiplayer={handleStartMultiplayer}
+            mpSocket={mpSocket}
           />
         )}
 

@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Quiz, User } from '../types';
-import { Globe, CheckCircle, Share2, Copy, Check, QrCode, ExternalLink, Sparkles, Shield, UserCheck, Search, UserPlus, UserMinus, Play, Flame, BookOpen, Clock } from 'lucide-react';
+import { Globe, CheckCircle, Share2, Copy, Check, Sparkles, Shield, UserCheck, Search, UserPlus, UserMinus, Play, Users } from 'lucide-react';
 import { ALL_VIRTUAL_MEMBERS, VirtualMember } from '../data';
+import { Socket } from 'socket.io-client';
 
 interface GroupSharingPanelProps {
   quizzes: Quiz[];
+  mpSocket: Socket | null;
   user: User;
   onShareQuiz: (quizId: string) => void;
   initialTab?: 'my-quizzes' | 'shared-feed' | 'members';
@@ -12,20 +14,23 @@ interface GroupSharingPanelProps {
   onFollowMember?: (memberName: string) => void;
   onUnfollowMember?: (memberName: string) => void;
   onStartQuiz?: (quizId: string, mode: 'solo' | 'group') => void;
+  onStartMultiplayer?: (quizId?: string) => void;
 }
 
 export default function GroupSharingPanel({
   quizzes,
   user,
+  mpSocket,
   onShareQuiz,
   initialTab,
   followedMembers = [],
   onFollowMember,
   onUnfollowMember,
-  onStartQuiz
+  onStartQuiz,
+  onStartMultiplayer
 }: GroupSharingPanelProps) {
   const [activeTab, setActiveTab] = useState<'my-quizzes' | 'shared-feed' | 'members'>(initialTab || 'shared-feed');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(''); // This is correct
   const [searchResults, setSearchResults] = useState<any[]>(ALL_VIRTUAL_MEMBERS);
   const [isSearching, setIsSearching] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -33,6 +38,7 @@ export default function GroupSharingPanel({
   React.useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults(ALL_VIRTUAL_MEMBERS);
+      setSearchResults([]);
       return;
     }
     const delayDebounceFn = setTimeout(() => {
@@ -40,15 +46,10 @@ export default function GroupSharingPanel({
       fetch(`/api/users/search?q=${encodeURIComponent(searchQuery)}`)
         .then(res => res.json())
         .then(data => {
-          if (data.users && data.users.length > 0) {
+          if (data.users) {
             setSearchResults(data.users);
           } else {
-            // fallback to virtual members if no real users found
-            const filtered = ALL_VIRTUAL_MEMBERS.filter(m =>
-              m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              m.nickname.toLowerCase().includes(searchQuery.toLowerCase())
-            );
-            setSearchResults(filtered);
+            setSearchResults([]);
           }
         })
         .catch(() => {
@@ -59,6 +60,17 @@ export default function GroupSharingPanel({
 
     return () => clearTimeout(delayDebounceFn);
   }, [searchQuery]);
+
+  const handleFollow = (member: any) => {
+    if (onFollowMember) {
+      onFollowMember(member.name);
+      // Serverga real-time xabar yuborish
+      mpSocket?.emit('followUser', {
+        follower: { uid: user.uid, name: user.name },
+        targetUid: member.uid
+      });
+    }
+  };
 
   const handleCopyLink = (quizId: string) => {
     const inviteLink = `${window.location.origin}/lobby?join=${quizId}`;
@@ -159,7 +171,7 @@ export default function GroupSharingPanel({
 
           {sharedFeedQuizzes.length === 0 ? (
             <div className="p-8 text-center bg-slate-900/40 rounded-2xl border border-slate-800 flex flex-col gap-3.5 items-center">
-              <BookOpen className="w-10 h-10 text-slate-600 animate-pulse" />
+              <Globe className="w-10 h-10 text-slate-600 animate-pulse" />
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-bold text-slate-400">Hech qanday ulashilgan test mavjud emas</span>
                 <p className="text-[10px] text-slate-500 leading-relaxed max-w-sm">
@@ -215,20 +227,30 @@ export default function GroupSharingPanel({
                         <span className="text-[9px] text-slate-500 font-mono">{quiz.questionsCount} ta savol</span>
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => onStartQuiz?.(quiz.id, 'solo')}
-                          className="py-1 px-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-cyan-400 text-[10px] font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1"
+                          className="py-1 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-850 text-[9px] font-bold text-cyan-400 hover:text-cyan-300 rounded-lg transition-all flex items-center gap-1 active:scale-95 shadow-sm"
+                          title="Yakka ishlash"
                         >
                           <Play className="w-2.5 h-2.5" />
-                          YAKKA YECHISH
+                          <span>YAKKA</span>
                         </button>
                         <button
                           onClick={() => onStartQuiz?.(quiz.id, 'group')}
-                          className="py-1 px-3 bg-linear-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-[10px] font-black rounded-lg transition-all active:scale-95 flex items-center gap-1 shadow-md"
+                          className="py-1 px-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-850 text-[9px] font-bold text-purple-400 hover:text-purple-300 rounded-lg transition-all flex items-center gap-1 active:scale-95 shadow-sm"
+                          title="Guruh bilan (Sun'iy AI)"
                         >
-                          <Globe className="w-2.5 h-2.5 text-slate-950" />
-                          GURUH (LOBBY)
+                          <Users className="w-2.5 h-2.5 text-purple-400" />
+                          <span>DUEL AI</span>
+                        </button>
+                        <button
+                          onClick={() => onStartMultiplayer?.(quiz.id)}
+                          className="py-1 px-2.5 bg-linear-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white text-[9px] font-black rounded-lg transition-all flex items-center gap-1 active:scale-95 shadow-sm"
+                          title="Haqiqiy Multiplayer Lobby"
+                        >
+                          <Globe className="w-2.5 h-2.5 text-white" />
+                          <span>LOBBY</span>
                         </button>
                       </div>
                     </div>
@@ -421,7 +443,7 @@ export default function GroupSharingPanel({
                         </button>
                       ) : (
                         <button
-                          onClick={() => onFollowMember?.(member.name)}
+                          onClick={() => handleFollow(member)}
                           className="py-1.5 px-3 bg-linear-to-r from-indigo-500 to-blue-600 hover:from-indigo-400 hover:to-blue-500 text-white text-[10px] font-black rounded-lg transition-all shadow active:scale-95 flex items-center gap-1"
                         >
                           <UserPlus className="w-3 h-3 text-indigo-100" />

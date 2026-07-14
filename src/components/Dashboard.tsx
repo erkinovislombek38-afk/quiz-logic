@@ -516,7 +516,7 @@ export default function Dashboard({
 
       const finalQuestionsCount = finalQuestions.length;
 
-      let chunkedParts: typeof generatedQuestions[] | undefined = undefined;
+      let chunkedParts: Question[][] | undefined = undefined;
       const shouldChunk = chunkingMode === 'module' && finalQuestionsCount > 30;
       if (shouldChunk) {
         chunkedParts = [];
