@@ -82,6 +82,8 @@ interface UserProfile {
 }
 const registeredUsers = new Map<string, UserProfile>();
 
+const sharedQuizzes: { quizId: string, quizTitle: string, senderName: string, sharedAt: number }[] = [];
+
 function generateRoomId(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let id = "";
@@ -151,16 +153,27 @@ io.on("connection", (socket) => {
     });
 
     // 3. Test ulashilganda hamma onlayn foydalanuvchilarga xabar berish
-    socket.on("shareQuiz", (data: { senderName: string, quizTitle: string }) => {
-      socket.broadcast.emit("newNotification", {
+    socket.on("shareQuiz", (data: { quizId: string, senderName: string, quizTitle: string }) => {
+      const newSharedQuiz = {
+        quizId: data.quizId,
+        quizTitle: data.quizTitle,
+        senderName: data.senderName,
+        sharedAt: Date.now(),
+      };
+      sharedQuizzes.unshift(newSharedQuiz); // Add to the beginning of the array
+
+      // Barcha ulangan klientlarga, shu jumladan yuboruvchiga ham xabar berish
+      io.emit("newNotification", {
         id: `share-${Date.now()}`,
         title: "Yangi Test Ulashildi 🚀",
         sender: data.senderName,
         text: `${data.senderName} yangi "${data.quizTitle}" testini guruhga tashladi!`,
         type: 'system',
-        time: "Hozirgina"
+        time: "Hozirgina",
+        quizId: data.quizId, // Include quizId for direct access
       });
     });
+    socket.on('getSharedQuizzes', (callback) => { callback(sharedQuizzes); });
 
     // ── CREATE ROOM ──
     socket.on(
@@ -222,12 +235,8 @@ io.on("connection", (socket) => {
           socket.emit("error", { message: "Xona topilmadi. ID ni tekshiring." });
           return;
         }
-        if (room.status !== "lobby") {
-          socket.emit("error", { message: "O'yin allaqachon boshlangan. Kutib turing." });
-          return;
-        }
-        if (Object.keys(room.players).length >= 10) {
-          socket.emit("error", { message: "Xona to'ldi (maksimal 10 ta o'yinchi)." });
+        if (Object.keys(room.players).length >= 30) {
+          socket.emit("error", { message: "Xona to'ldi (maksimal 30 ta o'yinchi)." });
           return;
         }
 
@@ -238,7 +247,7 @@ io.on("connection", (socket) => {
           avatarColor: data.playerColor || "bg-purple-500",
           score: 0,
           ready: false,
-          answers: {},
+          answers: {}
         };
 
         socket.join(data.roomId.toUpperCase());
@@ -350,34 +359,27 @@ io.on("connection", (socket) => {
         // Don't allow re-submission
         if (player.answers[data.questionIndex] !== undefined) return;
 
+        // Javobni saqlash
         player.answers[data.questionIndex] = data.answer;
 
-        if (!room.answers[data.questionIndex]) {
-          room.answers[data.questionIndex] = {};
+        // Ballarni serverda xavfsiz hisoblash
+        const question = room.quizQuestions[data.questionIndex];
+        if (question && question.correctAnswer === data.answer) {
+          player.score += 10; // To'g'ri javob uchun 10 ball
         }
-        room.answers[data.questionIndex][player.id] = data.answer;
 
-        // Notify all players that someone answered
-        io.to(room.id).emit("playerAnswered", {
-          playerId: player.id,
-          playerName: player.name,
-          questionIndex: data.questionIndex,
-          totalAnswered: Object.keys(room.answers[data.questionIndex] || {}).length,
-          totalPlayers: Object.keys(room.players).length,
-        });
-      }
-    );
-
-    // ── SCORE UPDATE (after client computes correctness) ──
-    socket.on(
-      "updateScore",
-      (data: { roomId: string; score: number }) => {
-        const room = rooms.get(data.roomId);
-        if (!room || !room.players[socket.id]) return;
-        room.players[socket.id].score = data.score;
+        // Barcha o'yinchilarga yangilangan ballarni yuborish
         io.to(room.id).emit("scoresUpdated", { room: getRoomSummary(room) });
+
+        // Boshqa o'yinchilarga kim javob berganini bildirish
+        io.to(room.id).emit("playerAnswered", { playerId: player.id, room: getRoomSummary(room) });
       }
     );
+
+    // Xavfsiz bo'lmagan 'updateScore' hodisasi olib tashlandi
+    /*
+    socket.on("updateScore", ...);
+    */
 
     // ── CHANGE TIME DYNAMICALLY ──
     socket.on("changeTime", (data: { roomId: string; delta: number }) => {
@@ -385,6 +387,15 @@ io.on("connection", (socket) => {
       if (!room) return;
       if (room.hostSocketId !== socket.id) return;
       io.to(room.id).emit("timeChanged", { delta: data.delta });
+    });
+
+    // ── PLAYER STATUS UPDATE (typing, answered, etc.) ──
+    socket.on("playerStatus", (data: { roomId: string; status: 'typing' | 'answered' | 'thinking' }) => {
+      const room = rooms.get(data.roomId);
+      if (!room || !room.players[socket.id]) return;
+      const player = room.players[socket.id];
+      // Boshqa o'yinchilarga ushbu o'yinchining holati haqida xabar berish
+      socket.to(data.roomId).emit("playerStatusChanged", { playerId: player.id, status: data.status });
     });
 
     // ── NEXT QUESTION (host advances) ──
@@ -764,7 +775,7 @@ Boshqa hech qanday matn qo'shma.`;
       errMsg.toLowerCase().includes("user rate limit") || error.message === 'email_limit_exceeded';
 
     if (isQuotaExceeded) {
-      return res.status(429).json({
+      return res.status(429).json({ // 429 status kodi bilan qaytarish
         error:
           "Sizning Google hisobingiz yoki API kalitingiz limiti tugagan. Boshqa hisobga kiring yoki yangi kalit qo'shing.",
         isQuotaError: true,
