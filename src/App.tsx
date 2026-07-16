@@ -12,7 +12,7 @@ import ProfilePanel from './components/ProfilePanel';
 import MultiplayerLobby from './components/MultiplayerLobby';
 import MultiplayerGame from './components/MultiplayerGame';
 import { ScreenType, Quiz, User, NotificationItem, VirtualPlayer, GameRoomSummary } from './types';
-import { INITIAL_QUIZZES, INITIAL_NOTIFICATIONS } from './data';
+import { INITIAL_QUIZZES } from './data';
 import { Award, Trophy, Zap, Sparkles, BookOpen, ChevronRight, RefreshCw, AlertTriangle, ArrowLeft, Crown, Check, X, Users } from 'lucide-react';
 
 export default function App() {
@@ -55,6 +55,8 @@ export default function App() {
     const roomId = params.get('room');
     const quizId = params.get('quiz');
     if (roomId) {
+      // Eski ID qolib ketmasligi uchun tozalash
+      setUrlRoomId(null); 
       setUrlRoomId(roomId.toUpperCase());
       setCurrentScreen('multiplayer-lobby');
     }
@@ -73,8 +75,8 @@ export default function App() {
   const [mpLobbyQuizId, setMpLobbyQuizId] = useState<string | null>(null);
 
   // Notifications state
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]); 
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0); 
 
   // Followed virtual members state
   const [followedMembers, setFollowedMembers] = useState<string[]>(() => {
@@ -187,17 +189,11 @@ export default function App() {
       if (q.id === quizId) return { ...q, isShared: true, sharedBy: user.name };
       return q;
     }));
+
     const matchedQuiz = quizzes.find(q => q.id === quizId);
     if (matchedQuiz) {
-      const newNotify: NotificationItem = {
-        id: `sys-shared-${Date.now()}`,
-        title: "Guruhda Ulashildi 🚀",
-        sender: "Tizim",
-        time: "Hozirgina",
-        text: `"${matchedQuiz.title}" loyihasi guruhda muvaffaqiyatli ulashildi.`,
-        type: 'system'
-      };
-      setNotifications(prev => [newNotify, ...prev]);
+      // Emit to server
+      mpSocket?.emit('shareQuiz', { quizId: matchedQuiz.id, senderName: user.name, quizTitle: matchedQuiz.title });
     }
   };
 
@@ -308,12 +304,24 @@ export default function App() {
     mpSocket.on('lobbyClosed', handleLobbyClosed);
 
     return () => {
+      // Prevent memory leaks
+      if (currentScreen !== 'multiplayer-result') {
+        mpSocket.off('gameRestarted', handleGameRestarted);
+        mpSocket.off('lobbyClosed', handleLobbyClosed);
+      }
       mpSocket.off('gameRestarted', handleGameRestarted);
       mpSocket.off('lobbyClosed', handleLobbyClosed);
     };
   }, [mpSocket, mpQuiz]);
 
   const activeQuiz = quizzes.find(q => q.id === activeQuizId);
+
+  // Reset unread count when notifications are viewed
+  useEffect(() => {
+    if (currentScreen === 'notifications') {
+      setUnreadCount(0);
+    }
+  }, [currentScreen]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col antialiased select-none pb-8">
@@ -323,7 +331,7 @@ export default function App() {
         user={user}
         onOpenSidebar={() => setIsSidebarOpen(true)}
         onNavigateNotifications={() => setCurrentScreen('notifications')}
-        notificationCount={notifications.length}
+        notificationCount={unreadCount}
       />
 
       {/* Background generation status bar */}
@@ -432,6 +440,7 @@ export default function App() {
             onStartQuiz={handleStartQuiz}
             onDeleteNotification={handleDeleteNotification}
             onUnshareQuiz={handleUnshareQuiz}
+            onSetUnreadCount={setUnreadCount}
           />
         )}
 
@@ -592,7 +601,8 @@ export default function App() {
             onUnfollowMember={handleUnfollowMember}
             onStartQuiz={handleStartQuiz}
             onStartMultiplayer={handleStartMultiplayer}
-            mpSocket={mpSocket}
+            mpSocket={mpSocket} 
+            unreadCount={unreadCount}
           />
         )}
 

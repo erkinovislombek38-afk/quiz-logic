@@ -10,10 +10,16 @@ interface NotificationFeedProps {
   onStartQuiz: (quizId: string, mode: 'solo' | 'group') => void;
   onDeleteNotification: (notificationId: string) => void;
   onUnshareQuiz: (quizId: string) => void;
+  onSetUnreadCount: (count: number) => void;
 }
 
-export default function NotificationFeed({ notifications, quizzes, user, onStartQuiz, onDeleteNotification, onUnshareQuiz }: NotificationFeedProps) {
+export default function NotificationFeed({ notifications, quizzes, user, onStartQuiz, onDeleteNotification, onUnshareQuiz, onSetUnreadCount }: NotificationFeedProps) {
   const [activeTab, setActiveTab] = useState<'notifications' | 'rankings' | 'shared'>('notifications');
+  
+  React.useEffect(() => {
+    onSetUnreadCount(0);
+  }, [onSetUnreadCount]);
+
   // Find a valid quiz to launch on challenge click
   const mathQuiz = quizzes.find(q => q.id === 'math-101') || quizzes[0];
 

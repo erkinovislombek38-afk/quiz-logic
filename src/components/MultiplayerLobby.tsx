@@ -109,6 +109,12 @@ export default function MultiplayerLobby({
       if (data.room.quizQuestions && data.room.quizQuestions.length > 0) {
         setRoomQuizQuestions(data.room.quizQuestions);
       }
+      // Agar xona allaqachon o'ynayotgan bo'lsa, to'g'ridan-to'g'ri o'yinga o'tish
+      if (data.room.status === 'playing') {
+        const quiz = quizzes.find(q => q.id === data.room.quizId) || { id: data.room.quizId, title: data.room.quizTitle, creator: 'Server', questionsCount: data.room.quizQuestionsCount, subject: 'Multiplayer', description: '', level: "O'rta" as const, questions: data.room.quizQuestions || [] };
+        onGameStart(s, data.room, quiz);
+        return;
+      }
       setRoom(data.room);
       setIsLoading(false);
       setError(null);
@@ -123,6 +129,12 @@ export default function MultiplayerLobby({
       if (data.room.quizQuestions && data.room.quizQuestions.length > 0) {
         setRoomQuizQuestions(data.room.quizQuestions);
       }
+      // Agar xona allaqachon o'ynayotgan bo'lsa, to'g'ridan-to'g'ri o'yinga o'tish
+      if (data.room.status === 'playing') {
+        const quiz = quizzes.find(q => q.id === data.room.quizId) || { id: data.room.quizId, title: data.room.quizTitle, creator: 'Server', questionsCount: data.room.quizQuestionsCount, subject: 'Multiplayer', description: '', level: "O'rta" as const, questions: data.room.quizQuestions || [] };
+        onGameStart(s, data.room, quiz);
+        return;
+      }
       setRoom(data.room);
       setIsLoading(false);
       setError(null);
@@ -133,7 +145,7 @@ export default function MultiplayerLobby({
       setChatMsgs(prev => [...prev, {
         senderId: 'system',
         senderName: 'Tizim',
-        text: `${data.player.name} xonaga qo'shildi 🎉`,
+        text: `👤 ${data.player.name} testga qo'shildi, omad!`,
         time: new Date().toLocaleTimeString('uz'),
       }]);
     });
@@ -143,7 +155,7 @@ export default function MultiplayerLobby({
       setChatMsgs(prev => [...prev, {
         senderId: 'system',
         senderName: 'Tizim',
-        text: `${data.playerName} xonadan chiqdi`,
+        text: `🚫 ${data.playerName} testni tark etdi`,
         time: new Date().toLocaleTimeString('uz'),
       }]);
     });

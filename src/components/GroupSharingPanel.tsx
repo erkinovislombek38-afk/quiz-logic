@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Quiz, User } from '../types';
 import { Globe, CheckCircle, Share2, Copy, Check, Sparkles, Shield, UserCheck, Search, UserPlus, UserMinus, Play, Users } from 'lucide-react';
-import { ALL_VIRTUAL_MEMBERS, VirtualMember } from '../data';
+import { VirtualMember } from '../data';
 import { Socket } from 'socket.io-client';
 
 interface GroupSharingPanelProps {
@@ -15,6 +15,7 @@ interface GroupSharingPanelProps {
   onUnfollowMember?: (memberName: string) => void;
   onStartQuiz?: (quizId: string, mode: 'solo' | 'group') => void;
   onStartMultiplayer?: (quizId?: string) => void;
+  unreadCount?: number;
 }
 
 export default function GroupSharingPanel({
@@ -27,7 +28,8 @@ export default function GroupSharingPanel({
   onFollowMember,
   onUnfollowMember,
   onStartQuiz,
-  onStartMultiplayer
+  onStartMultiplayer,
+  unreadCount
 }: GroupSharingPanelProps) {
   const [activeTab, setActiveTab] = useState<'my-quizzes' | 'shared-feed' | 'members'>(initialTab || 'shared-feed');
   const [searchQuery, setSearchQuery] = useState('');
@@ -120,11 +122,11 @@ export default function GroupSharingPanel({
           className={`flex-1 py-2.5 rounded-xl text-[10px] sm:text-xs font-black tracking-wide uppercase transition-all duration-200 relative ${
             activeTab === 'shared-feed'
               ? 'bg-linear-to-r from-indigo-600 to-blue-600 border border-indigo-500/30 text-white shadow-lg'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850/60'
           }`}
         >
           Tasma (Ulashilganlar)
-          {sharedFeedQuizzes.length > 0 && (
+          {unreadCount > 0 && (
             <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
@@ -137,7 +139,7 @@ export default function GroupSharingPanel({
           className={`flex-1 py-2.5 rounded-xl text-[10px] sm:text-xs font-black tracking-wide uppercase transition-all duration-200 ${
             activeTab === 'my-quizzes'
               ? 'bg-linear-to-r from-indigo-600 to-blue-600 border border-indigo-500/30 text-white shadow-lg'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850/60'
           }`}
         >
           Mening Testlarim
@@ -148,7 +150,7 @@ export default function GroupSharingPanel({
           className={`flex-1 py-2.5 rounded-xl text-[10px] sm:text-xs font-black tracking-wide uppercase transition-all duration-200 ${
             activeTab === 'members'
               ? 'bg-linear-to-r from-indigo-600 to-blue-600 border border-indigo-500/30 text-white shadow-lg'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850/60'
           }`}
         >
           A'zolar & Obunalar ({followedMembers.length})
@@ -187,8 +189,8 @@ export default function GroupSharingPanel({
           ) : (
             <div className="flex flex-col gap-3">
               {sharedFeedQuizzes.map((quiz) => {
-                // Find matching member to show details
-                const author = ALL_VIRTUAL_MEMBERS.find(m => m.name === quiz.creator);
+                // Find matching member to show details (from search results or a future global user list)
+                const author = searchResults.find(m => m.name === quiz.creator);
                 return (
                   <div
                     key={quiz.id}

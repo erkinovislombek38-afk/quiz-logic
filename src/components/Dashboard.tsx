@@ -504,6 +504,12 @@ export default function Dashboard({
           } catch (e) { 
             console.warn("Could not parse JSON from AI error response.");
           }
+          // API kalit limiti tugaganini tekshirish (TypeScript xatoligini oldini olish uchun 'in' ishlatildi)
+          if ('isQuotaError' in err && err.isQuotaError) {
+            setErrorMsg("API kalitining limiti tugadi. Iltimos, sozlamalardan yangi kalit tanlang yoki kuting.");
+            // TODO: Bu yerda keyingi kalitga avtomatik o'tish logikasini qo'shish mumkin
+            // localStorage.setItem('exhausted_keys', ...)
+          }
           throw new Error(err.error || "AI test generatsiya qila olmadi.");
         }
         const data = await genResponse.json();
